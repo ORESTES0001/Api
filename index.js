@@ -5,7 +5,13 @@ const passport = require("passport");
 const mongoose = require("mongoose");
 const LocalStrategy = require("passport-local").Strategy
 
+const http = require('http');
+const { Server } = require('socket.io');
+
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+
 const port = 8001;
 app.use(cors());
 app.use((req, res, next) => {
@@ -354,3 +360,14 @@ app.get("/friends/:userId",(req,res) => {
     res.status(500).json({message:"internal server error"})
   }
 })
+
+
+io.on('connection', (socket) => {
+  socket.on('join', (room) => {
+    socket.join(room); // Únete a una sala según el identificador del receptor
+  });
+
+  socket.on('newMessage', (message) => {
+    io.to(message.recepientId).emit('newMessage', message);
+  });
+});

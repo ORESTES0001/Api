@@ -47,31 +47,67 @@ app.listen(port, () => {
 const User = require("./models/user");
 const Message = require("./models/messages");
 const multer = require("multer");
+const { body, validationResult } = require('express-validator');
+const bcrypt = require('bcrypt');
+// Middleware para validar datos de entrada
+const validateInput = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(422).json({ errors: errors.array() });
+  }
+  next();
+};
 
 
 /* registro */
-app.post("/register", (req, res) => {
+app.post(
+  '/register',
+  [
+    body('name').notEmpty(),
+    body('email').isEmail(),
+    body('password').isLength({ min: 6 }),
+  ],
+  validateInput,
+  (req, res) => {
     const { name, email, password } = req.body;
 
     // crear un nuevo usuario
-    const newUser = new User({ name, email, password });
-
-    // guardar el usuario en la base de datos
-    newUser
-        .save()
-        .then(() => {
-            res.status(200).json({ message: "User registered successfully" });
-        })
-        .catch((err) => {
-            console.log("Error registering user", err);
-            res.status(500).json({ message: "Error registering the user!" });
-        });
-
-})
+    const newUser = new User({ name, email });
+bcrypt.hash(password, 10, (err, hash) => {
+  if (err) {
+    return res.status(500).json({ message: 'Error hashing password' });
+  }
+  newUser.password = hash;
+  newUser.save()
+    .then(() => {
+      res.status(200).json({ message: 'User registered successfully' });
+    })
+    .catch((err) => {
+      console.log('Error registering user', err);
+      res.status(500).json({ message: 'Error registering the user!' });
+    });
+});
+  }
+);
 
 
 /*Login*/
-
+passport.use(new LocalStrategy(
+  { usernameField: 'email' },
+  (email, password, done) => {
+    User.findOne({ email }, (err, user) => {
+      if (err) return done(err);
+      if (!user) return done(null, false, { message: 'Usuario no encontrado' });
+      bcrypt.compare(password, user.password, (err, res) => {
+        if (res) {
+          return done(null, user);
+        } else {
+          return done(null, false, { message: 'Contraseña incorrecta' });
+        }
+      });
+    });
+  }
+));
 //Función para crear un token para el usuario.
 const createToken = (userId) => {
     // Establecer la carga útil del token
@@ -86,7 +122,7 @@ const createToken = (userId) => {
   };
   
   //punto final para iniciar sesión de ese usuario en particular
-  app.post("/login", (req, res) => {
+  app.post('/login', passport.authenticate('local'), (req, res) => {
     const { email, password } = req.body;
   
     //comprobar si se proporciona el correo electrónico y la contraseña
@@ -109,7 +145,7 @@ const createToken = (userId) => {
           return res.status(404).json({ message: "¡Contraseña invalida!" });
         }
   
-        const token = createToken(user._id);
+        const token = createToken(req.user._id);
         res.status(200).json({ token });
       })
       .catch((error) => {
